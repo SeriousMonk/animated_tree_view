@@ -55,6 +55,26 @@ enum ExpansionBehavior {
   collapseOthersAndSnapToTop,
 }
 
+/// Used to keep track and handle when user reorders an element by drag and drop
+class DragDetails{
+  String? originPath;
+
+  ///path of the node that will be the parent of the dragged node if dropped
+  ///This is needed because [destinationPath] will be null if the dragged element
+  ///has to be inserted as first child
+  ValueNotifier<String?> destinationParentPath = ValueNotifier(null);
+
+  ///path of the node after which the dragged item should be inserted if dropped
+  ValueNotifier<String?> destinationPath = ValueNotifier(null);
+  double? currentFeedbackDy;
+
+  void reset(){
+    originPath = null;
+    destinationPath.value = null;
+    currentFeedbackDy = null;
+  }
+}
+
 ///Utility class to provide easy access to basic node operations.
 ///The [TreeViewController] also exposes basic scrolling methods that can be used
 ///for scrolling to an item or a list index.
@@ -110,6 +130,9 @@ abstract base class _TreeView<Data, Tree extends ITreeNode<Data>>
     extends StatefulWidget {
   /// The [builder] function that is provided to the item builder
   final TreeNodeWidgetBuilder<Tree> builder;
+
+  /// The [disabledBuilder] function that is used to build the childWhenDragging widget
+  final TreeNodeWidgetBuilder<Tree>? disabledBuilder;
 
   /// The rootNode of the [tree]. If the [tree] is updated using setState or any
   /// other state management tool, then a [TreeDiff] is performed to get all the
@@ -182,6 +205,7 @@ abstract base class _TreeView<Data, Tree extends ITreeNode<Data>>
     super.key,
     this.expansionBehavior = ExpansionBehavior.none,
     required this.builder,
+    this.disabledBuilder,
     required this.tree,
     Indentation? indentation,
     this.scrollController,
@@ -199,8 +223,8 @@ mixin _TreeViewState<Data, Tree extends ITreeNode<Data>,
   late final TreeViewController<Data, Tree> controller;
   late final TreeViewStateHelper<Data> _treeViewEventHandler;
   late final AutoScrollController _scrollController;
-
   ITreeNode<Data> get _tree => _treeViewEventHandler.tree;
+  DragDetails _dragDetails = DragDetails();
 
   @override
   void initState() {
@@ -240,6 +264,7 @@ mixin _TreeViewState<Data, Tree extends ITreeNode<Data>,
             as Tree,
         index: index,
         builder: widget.builder,
+        disabledBuilder: widget.disabledBuilder,
         scrollController: _scrollController,
         animation: animation,
         indentation: widget.indentation,
@@ -249,6 +274,7 @@ mixin _TreeViewState<Data, Tree extends ITreeNode<Data>,
             .toggleExpansion(item),
         onItemTap: widget.onItemTap,
         showRootNode: widget.showRootNode,
+        dragDetails: _dragDetails
       );
 
   Widget _removedItemBuilder(
@@ -258,7 +284,8 @@ mixin _TreeViewState<Data, Tree extends ITreeNode<Data>,
   ) =>
       ExpandableNodeItem.removedNode<Data, Tree>(
         node: node,
-        builder: (context, node) => widget.builder(context, node),
+        builder: widget.builder,
+        disabledBuilder: widget.disabledBuilder,
         scrollController: _scrollController,
         animation: animation,
         indentation: widget.indentation,
@@ -269,6 +296,7 @@ mixin _TreeViewState<Data, Tree extends ITreeNode<Data>,
         onItemTap: widget.onItemTap,
         showRootNode: widget.showRootNode,
         isLastChild: true,
+        dragDetails: _dragDetails
       );
 
   @override
@@ -369,6 +397,7 @@ final class TreeView<Data, Tree extends ITreeNode<Data>>
     super.key,
     super.expansionBehavior,
     required super.builder,
+    super.disabledBuilder,
     required super.tree,
     super.indentation,
     super.scrollController,
@@ -404,6 +433,7 @@ final class TreeView<Data, Tree extends ITreeNode<Data>>
   static TreeView<Data, TreeNode<Data>> simple<Data>({
     Key? key,
     required TreeNodeWidgetBuilder<TreeNode<Data>> builder,
+    TreeNodeWidgetBuilder<TreeNode<Data>>? disabledBuilder,
     required final TreeNode<Data> tree,
     ExpansionBehavior expansionBehavior = ExpansionBehavior.none,
     Indentation? indentation,
@@ -420,6 +450,7 @@ final class TreeView<Data, Tree extends ITreeNode<Data>>
       TreeView._(
         key: key,
         builder: builder,
+        disabledBuilder: disabledBuilder,
         tree: tree,
         expansionBehavior: expansionBehavior,
         indentation: indentation,
@@ -459,6 +490,7 @@ final class TreeView<Data, Tree extends ITreeNode<Data>>
   static TreeView<Data, Tree> simpleTyped<Data, Tree extends TreeNode<Data>>({
     Key? key,
     required TreeNodeWidgetBuilder<Tree> builder,
+    TreeNodeWidgetBuilder<TreeNode<Data>>? disabledBuilder,
     required final Tree tree,
     ExpansionBehavior expansionBehavior = ExpansionBehavior.none,
     Indentation? indentation,
@@ -475,6 +507,7 @@ final class TreeView<Data, Tree extends ITreeNode<Data>>
       TreeView._(
         key: key,
         builder: builder,
+        disabledBuilder: disabledBuilder,
         tree: tree,
         expansionBehavior: expansionBehavior,
         indentation: indentation,
@@ -510,6 +543,7 @@ final class TreeView<Data, Tree extends ITreeNode<Data>>
   static TreeView<Data, IndexedTreeNode<Data>> indexed<Data>({
     Key? key,
     required TreeNodeWidgetBuilder<IndexedTreeNode<Data>> builder,
+    TreeNodeWidgetBuilder<IndexedTreeNode<Data>>? disabledBuilder,
     required final IndexedTreeNode<Data> tree,
     ExpansionBehavior expansionBehavior = ExpansionBehavior.none,
     Indentation? indentation,
@@ -526,6 +560,7 @@ final class TreeView<Data, Tree extends ITreeNode<Data>>
       TreeView._(
         key: key,
         builder: builder,
+        disabledBuilder: disabledBuilder,
         tree: tree,
         expansionBehavior: expansionBehavior,
         indentation: indentation,
@@ -564,6 +599,7 @@ final class TreeView<Data, Tree extends ITreeNode<Data>>
       indexTyped<Data, Tree extends IndexedTreeNode<Data>>({
     Key? key,
     required TreeNodeWidgetBuilder<Tree> builder,
+    TreeNodeWidgetBuilder<Tree>? disabledBuilder,
     required final Tree tree,
     ExpansionBehavior expansionBehavior = ExpansionBehavior.none,
     Indentation? indentation,
@@ -580,6 +616,7 @@ final class TreeView<Data, Tree extends ITreeNode<Data>>
           TreeView._(
             key: key,
             builder: builder,
+            disabledBuilder: disabledBuilder,
             tree: tree,
             expansionBehavior: expansionBehavior,
             indentation: indentation,

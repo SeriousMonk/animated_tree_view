@@ -1,8 +1,7 @@
 import 'package:animated_tree_view/animated_tree_view.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
-import '../utils/utils.dart';
+import './utils/utils.dart';
 
 const showSnackBar = false;
 const expandChildrenOnReady = true;
@@ -96,6 +95,16 @@ class MyHomePageState extends State<MyHomePage> {
             subtitle: Text('Level ${node.level}'),
           ),
         ),
+        disabledBuilder: (context, node) => Card(
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          color: Colors.black.withOpacity(0.2),
+          child: ListTile(
+            textColor: Colors.black45,
+            title: Text("Item ${node.level}-${node.key}"),
+            subtitle: Text('Level ${node.level}'),
+          ),
+        )
       ),
     );
   }
