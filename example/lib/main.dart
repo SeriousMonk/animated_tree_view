@@ -62,7 +62,7 @@ class MyHomePageState extends State<MyHomePage> {
           );
         },
       ),
-      body: TreeView.simple(
+      body: TreeView.indexed(
         tree: sampleTree,
         showRootNode: true,
         expansionIndicatorBuilder: (context, node) =>
@@ -94,39 +94,29 @@ class MyHomePageState extends State<MyHomePage> {
             title: Text("Item ${node.level}-${node.key}"),
             subtitle: Text('Level ${node.level}'),
           ),
-        ),
-        disabledBuilder: (context, node) => Card(
-          elevation: 0,
-          shadowColor: Colors.transparent,
-          color: Colors.black.withOpacity(0.2),
-          child: ListTile(
-            textColor: Colors.black45,
-            title: Text("Item ${node.level}-${node.key}"),
-            subtitle: Text('Level ${node.level}'),
-          ),
         )
       ),
     );
   }
 }
 
-final sampleTree = TreeNode.root()
+final sampleTree = IndexedTreeNode.root()
   ..addAll([
-    TreeNode(key: "0A")..add(TreeNode(key: "0A1A")),
-    TreeNode(key: "0C")
+    IndexedTreeNode(key: "0A")..add(IndexedTreeNode(key: "0A1A")),
+    IndexedTreeNode(key: "0C")
       ..addAll([
-        TreeNode(key: "0C1A"),
-        TreeNode(key: "0C1B"),
-        TreeNode(key: "0C1C")
+        IndexedTreeNode(key: "0C1A"),
+        IndexedTreeNode(key: "0C1B"),
+        IndexedTreeNode(key: "0C1C")
           ..addAll([
-            TreeNode(key: "0C1C2A")
+            IndexedTreeNode(key: "0C1C2A")
               ..addAll([
-                TreeNode(key: "0C1C2A3A"),
-                TreeNode(key: "0C1C2A3B"),
-                TreeNode(key: "0C1C2A3C"),
+                IndexedTreeNode(key: "0C1C2A3A"),
+                IndexedTreeNode(key: "0C1C2A3B"),
+                IndexedTreeNode(key: "0C1C2A3C"),
               ]),
           ]),
       ]),
-    TreeNode(key: "0D"),
-    TreeNode(key: "0E"),
+    IndexedTreeNode(key: "0D"),
+    IndexedTreeNode(key: "0E"),
   ]);

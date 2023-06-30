@@ -1,12 +1,9 @@
 import 'package:animated_tree_view/animated_tree_view.dart';
 import 'package:flutter/material.dart';
 
-import '../../helpers/disabled_widget.dart';
-
 class ExpandableNodeItem<Data, Tree extends ITreeNode<Data>>
     extends StatelessWidget {
   final TreeNodeWidgetBuilder<Tree> builder;
-  final TreeNodeWidgetBuilder<Tree>? disabledBuilder;
   final AutoScrollController scrollController;
   final Tree node;
   final Animation<double> animation;
@@ -23,7 +20,6 @@ class ExpandableNodeItem<Data, Tree extends ITreeNode<Data>>
     required int index,
     required Tree node,
     required TreeNodeWidgetBuilder<Tree> builder,
-    TreeNodeWidgetBuilder<Tree>? disabledBuilder,
     required AutoScrollController scrollController,
     required Animation<double> animation,
     required ExpansionIndicatorBuilder<Data>? expansionIndicator,
@@ -39,7 +35,6 @@ class ExpandableNodeItem<Data, Tree extends ITreeNode<Data>>
         valueListenable: (treeNode as Tree).listenableData,
         builder: (context, data, _) => ExpandableNodeItem<Data, Tree>(
           builder: builder,
-          disabledBuilder: disabledBuilder,
           scrollController: scrollController,
           node: node,
           index: index,
@@ -58,7 +53,6 @@ class ExpandableNodeItem<Data, Tree extends ITreeNode<Data>>
   static Widget removedNode<Data, Tree extends ITreeNode<Data>>({
     required Tree node,
     required TreeNodeWidgetBuilder<Tree> builder,
-    TreeNodeWidgetBuilder<Tree>? disabledBuilder,
     required AutoScrollController scrollController,
     required Animation<double> animation,
     required ExpansionIndicatorBuilder<Data>? expansionIndicator,
@@ -71,7 +65,6 @@ class ExpandableNodeItem<Data, Tree extends ITreeNode<Data>>
   }) {
     return ExpandableNodeItem<Data, Tree>(
       builder: builder,
-      disabledBuilder: disabledBuilder,
       scrollController: scrollController,
       node: node,
       remove: true,
@@ -88,7 +81,6 @@ class ExpandableNodeItem<Data, Tree extends ITreeNode<Data>>
   const ExpandableNodeItem({
     super.key,
     required this.builder,
-    this.disabledBuilder,
     required this.scrollController,
     required this.node,
     required this.animation,
@@ -108,7 +100,6 @@ class ExpandableNodeItem<Data, Tree extends ITreeNode<Data>>
       animation: animation,
       node: node,
       child: builder(context, node),
-      disabledChild: disabledBuilder == null ? null : disabledBuilder!(context, node),
       indentation: indentation,
       minLevelToIndent: showRootNode ? 0 : 1,
       expansionIndicator: node.childrenAsList.isEmpty
@@ -143,7 +134,6 @@ class ExpandableNodeContainer<T> extends StatefulWidget {
   final ExpansionIndicator? expansionIndicator;
   final Indentation indentation;
   final Widget child;
-  final Widget? disabledChild;
   final int minLevelToIndent;
   final DragDetails dragDetails;
 
@@ -153,7 +143,6 @@ class ExpandableNodeContainer<T> extends StatefulWidget {
     required this.onTap,
     required this.toggleExpansion,
     required this.child,
-    this.disabledChild,
     required this.node,
     required this.indentation,
     required this.minLevelToIndent,
@@ -208,14 +197,6 @@ class _ExpandableNodeContainerState<T> extends State<ExpandableNodeContainer<T>>
                     child: widget.child
                 ))
               ),
-              childWhenDragging: widget.disabledChild != null ? widget.disabledChild : Container(
-                decoration: BoxDecoration(),
-                clipBehavior: Clip.antiAlias,
-                width: constraints.maxWidth,
-                child: Disabled(
-                  child: widget.child,
-                ),
-              ),
               child: DragTarget<ITreeNode<T>>(
                 onMove: _onMove,
                 builder: (BuildContext context, List<Object?> candidateData, List<dynamic> rejectedData) {
@@ -235,37 +216,70 @@ class _ExpandableNodeContainerState<T> extends State<ExpandableNodeContainer<T>>
 
   void _onDragStarted(){
     if(widget.node.isExpanded){
-      widget.toggleExpansion(widget.node);
       _wasExpandedOnDragStart = true;
     }
-    widget.dragDetails.originPath = widget.node.path;
+
+    List<INode> children = widget.node.parent!.childrenAsList;
+    int index = children.indexWhere((e) => e.key == widget.node.key);
+    if(index == -1) throw Exception('Target node not found in tree');
+
+    widget.dragDetails.originPosition = widget.dragDetails.destinationPosition = TreePosition(
+      parentPath: widget.node.parent!.path,
+      position: index
+    );
+
+    widget.dragDetails.draggedNode = widget.node;
+    (widget.node as IIndexedNodeActions).delete();
   }
 
   void _onDragCancel(Velocity _, Offset __){
-    if(_wasExpandedOnDragStart){
-      widget.toggleExpansion(widget.node);
-      _wasExpandedOnDragStart = false;
-    }
+    ///this triggers DragDetails to notifyListeners and remove the gap widget
+    ///before placing the node at its original position
+    widget.dragDetails.destinationPosition = null;
+
+    final parent = widget.node.parent as IIndexedNodeActions;
+    parent.insert(
+      widget.dragDetails.originPosition!.position,
+      widget.dragDetails.draggedNode as IndexedNode
+    );
 
     widget.dragDetails.reset();
+
+    if(_wasExpandedOnDragStart){
+
+      _wasExpandedOnDragStart = false;
+    }
   }
 
   void _onDragUpdate(DragUpdateDetails _){
-    RenderBox itemRenderBox = _feedbackKey.currentContext?.findRenderObject()! as RenderBox;
+    RenderBox itemRenderBox = _feedbackKey.currentContext?.findRenderObject() as RenderBox;
     widget.dragDetails.currentFeedbackDy = itemRenderBox.localToGlobal(Offset(0, itemRenderBox.size.height / 2)).dy;
   }
 
   void _onMove(DragTargetDetails<ITreeNode<T>> details){
     bool willAccept = widget.node.level == details.data.level && widget.node.key != details.data.key;
 
-    if(mounted && willAccept){
+    if(mounted && willAccept && widget.dragDetails.currentFeedbackDy != null){
       RenderBox itemRenderBox = context.findRenderObject()! as RenderBox;
       double targetDy = itemRenderBox.localToGlobal(Offset(0, itemRenderBox.size.height / 2)).dy;
 
       if(widget.dragDetails.currentFeedbackDy! >= targetDy){
-        ///dragged item has to be placed after this node
-        widget.dragDetails.destinationParentPath.value = widget.node.parent!.path;
-        widget.dragDetails.destinationPath.value = widget.node.path;
+        List<INode> children = widget.node.parent!.childrenAsList;
+        int targetNodeIndex = children.indexWhere((e) => e.key == widget.node.key);
+        if(targetNodeIndex == -1) throw Exception('Target node not found in tree');
+
+        if(targetNodeIndex == children.length - 1){
+          ///if this is the last child node
+          widget.dragDetails.destinationPosition = TreePosition(
+            parentPath: widget.node.parent!.path,
+            position: children.length
+          );
+        }else{
+          widget.dragDetails.destinationPosition = TreePosition(
+            parentPath: widget.node.parent!.path,
+            position: targetNodeIndex + 1
+          );
+        }
       }else{
         ///dragged item has to be placed before this node
         List<INode> children = widget.node.parent!.childrenAsList;
@@ -273,22 +287,18 @@ class _ExpandableNodeContainerState<T> extends State<ExpandableNodeContainer<T>>
         if(targetNodeIndex == -1) throw Exception('Target node not found in tree');
 
         if(targetNodeIndex == 0){
-          ///if this is the first child node, simply specify the parent
-          widget.dragDetails.destinationParentPath.value = widget.node.parent!.path;
-          widget.dragDetails.destinationPath.value = null;
+          ///if this is the first child node
+          widget.dragDetails.destinationPosition = TreePosition(
+            parentPath: widget.node.parent!.path,
+            position: 0
+          );
         }else{
           ///otherwise specify that the dragged item should be
           ///placed after the node before this one
-          INode previousNode = children[targetNodeIndex - 1];
-          if(previousNode.key == details.data.key){
-            ///previous node is the item being dragged. In this case
-            ///the item does not need to be moved
-            widget.dragDetails.destinationParentPath.value = null;
-            widget.dragDetails.destinationPath.value = null;
-          }else{
-            widget.dragDetails.destinationParentPath.value = widget.node.parent!.path;
-            widget.dragDetails.destinationPath.value =  children[targetNodeIndex - 1].path;
-          }
+          widget.dragDetails.destinationPosition = TreePosition(
+            parentPath: widget.node.parent!.path,
+            position: targetNodeIndex - 1
+          );
         }
       }
     }
